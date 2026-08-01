@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Canvas, Rect, IText, Path } from "fabric";
+import { Canvas, IText, Path } from "fabric";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -12,9 +12,9 @@ export default function Home() {
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = new Canvas(canvasRef.current, { 
-      width: 700, 
-      height: 980, 
-      backgroundColor: "#eae6dd" 
+      width: 1000, 
+      height: 750, 
+      backgroundColor: "#F2F0ED" 
     });
     canvasInstance.current = canvas;
     return () => { canvas.dispose(); };
@@ -27,40 +27,81 @@ export default function Home() {
     canvas.clear();
 
     if (shape === "flat") {
-      canvas.set("backgroundColor", "#5b7543");
+      canvas.set("backgroundColor", "#4B612C");
 
-      // Flat 모양
-      const flatStone = new Path("M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z", {
-        top: 400, left: 130, fill: stoneColor, stroke: "#3a3c42", strokeWidth: 3, selectable: false
-      });
+      // 1. 가로형 비율의 Flat 석판 (Path + Scale 사용)
+      const flatStone = new Path(
+        "M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z",
+        {
+          originX: "center",
+          originY: "center",
+          left: 500, // 캔버스 너비(1000)의 중앙
+          top: 375,  // 캔버스 높이(750)의 중앙
+          scaleX: 1.5, // 가로 폭 확대
+          scaleY: 0.7, // 세로 높이 축소 (가로형 직사각형)
+          fill: stoneColor,
+          stroke: "#3a3c42",
+          strokeWidth: 3,
+          selectable: false,
+        }
+      );
       canvas.add(flatStone);
 
-      // Flat 비석 내부 중앙 정렬된 텍스트 및 모티프
-      const t1 = new IText("COLE", { top: 435, fontSize: 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 140 });
-      const t2 = new IText("Margaret Anne Cole", { top: 505, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
-      const t3 = new IText("1946 ✦ 2023", { top: 560, fontSize: 13, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif" });
-      const heart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", { top: 600, scaleX: 0.38, scaleY: 0.38, fill: "#b0b3b8" });
-      const t4 = new IText("Forever in our hearts", { top: 655, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+      // 2. 가로형 석판 내부 높이에 맞춰 수직 위치(top) 재조정
+      const t1 = new IText("Hello", { 
+        top: 280, 
+        fontSize: 30, 
+        fill: "#ffffff", 
+        fontFamily: "'Cormorant Garamond', serif", 
+        charSpacing: 140 
+      });
+      const t2 = new IText("Honor Life", { 
+        top: 330, 
+        fontSize: 55, 
+        fill: "#ffffff", 
+        fontFamily: "'Cormorant Garamond', serif", 
+        charSpacing: 20 
+      });
+      const t3 = new IText("1946 ✦ 2023", { 
+        top: 395, 
+        fontSize: 35, 
+        fill: "#cccccc", 
+        fontFamily: "'Cormorant Garamond', serif" 
+      });
+      const heart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", { 
+        top: 435, 
+        scaleX: 0.35, 
+        scaleY: 0.35, 
+        fill: "#b0b3b8" 
+      });
+      const t4 = new IText("Forever in our hearts", { 
+        top: 480, 
+        fontSize: 25, 
+        fill: "#ffffff", 
+        fontFamily: "'Cormorant Garamond', serif", 
+        fontStyle: "italic" 
+      });
 
       canvas.add(t1, t2, t3, heart, t4);
+      
+      // 3. 요소들 수평 중앙 정렬
       [flatStone, t1, t2, t3, heart, t4].forEach(obj => canvas.centerObjectH(obj));
 
     } else {
-      canvas.set("backgroundColor", "#eae6dd");
+      canvas.set("backgroundColor", "#F2F0ED");
 
-      // Serpentine top 모양 (받침대 높이 50% 향상된 상태 유지)
+      // Serpentine top 모양 (기존 유지)
       const combinedStone = new Path("M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z", {
         top: 380, left: 140, fill: stoneColor, selectable: false
       });
       
       canvas.add(combinedStone);
 
-      // Serpentine 비석 내부 중앙에 완벽히 들어맞도록 수직 위치 조정
-      const t1 = new IText("COLE", { top: 425, fontSize: 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 140 });
-      const t2 = new IText("Margaret Anne Cole", { top: 505, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
-      const t3 = new IText("1946 ✦ 2023", { top: 565, fontSize: 13, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif", charSpacing: 10 });
-      const heart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", { top: 605, scaleX: 0.4, scaleY: 0.4, fill: "#b0b3b8" });
-      const t4 = new IText("Forever in our hearts", { top: 665, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+      const t1 = new IText("COLE", { top: 225, fontSize: 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 140 });
+      const t2 = new IText("Margaret Anne Colel", { top: 305, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
+      const t3 = new IText("1946 ✦ 2026", { top: 365, fontSize: 22, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif", charSpacing: 10 });
+      const heart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", { top: 425, scaleX: 0.4, scaleY: 0.4, fill: "#b0b3b8" });
+      const t4 = new IText("Forever in our hearts", { top: 465, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
       canvas.add(t1, t2, t3, heart, t4);
       [combinedStone, t1, t2, t3, heart, t4].forEach(obj => canvas.centerObjectH(obj));
@@ -71,9 +112,9 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", backgroundColor: "#efece6", overflow: "hidden", fontFamily: "sans-serif" }}>
-      <link href="https://googleapis.com" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet" />
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 30px", borderBottom: "1px solid #dfdad0", backgroundColor: "#f9f8f6" }}>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "24px", fontWeight: "bold" }}>The Stone & Studio <span style={{ fontSize: "11px", fontFamily: "sans-serif", color: "#888" }}>design a memorial together</span></div>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "24px", fontWeight: "bold" }}>The Stone & Studio <span style={{ fontSize: "11px", fontFamily: "sans-serif", color: "#888", fontWeight: "normal" }}>design a memorial together</span></div>
       </header>
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <aside style={{ width: "260px", backgroundColor: "#f9f8f6", padding: "15px", borderRight: "1px solid #dfdad0" }}>
