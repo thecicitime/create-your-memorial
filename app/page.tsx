@@ -8,8 +8,8 @@ export default function Home() {
 
   const [stoneColor, setStoneColor] = useState("#15161a");
   const [shape, setShape] = useState("serpentine");
-  // 캔버스에 있는 텍스트 목록을 관리하는 상태
-  const [textList, setTextList] = useState<{ id: string; text: string }[]>([]);
+  // 리스트 관리를 위해 고유 id와 개체 참조를 포함하도록 수정
+  const [objectList, setObjectList] = useState<{ id: any; name: string; isLocked: boolean; type: string }[]>([]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -19,33 +19,25 @@ export default function Home() {
       backgroundColor: "#F2F0ED" 
     });
     canvasInstance.current = canvas;
+
+    loadInitialDesign(canvas, shape, stoneColor);
+
+    const syncList = () => updateObjectList();
+    canvas.on("object:added", syncList);
+    canvas.on("object:removed", syncList);
+    canvas.on("text:changed", syncList);
+    canvas.on("object:modified", syncList);
+
     return () => { 
       canvas.dispose(); 
       canvasInstance.current = null;
     };
   }, []);
 
-  // 캔버스 내 텍스트 리스트를 최신화하는 함수
-  const updateTextList = () => {
-    if (!canvasInstance.current) return;
-    const canvas = canvasInstance.current;
-    const texts: { id: string; text: string }[] = [];
-    
-    canvas.getObjects().forEach((obj) => {
-      if (obj instanceof IText) {
-        texts.push({ id: obj.cacheKey || Math.random().toString(), text: obj.text || "" });
-      }
-    });
-    setTextList(texts);
-  };
-
-  useEffect(() => {
-    if (!canvasInstance.current) return;
-    const canvas = canvasInstance.current;
-
+  const loadInitialDesign = (canvas: Canvas, currentShape: string, color: string) => {
     canvas.clear();
 
-    if (shape === "flat") {
+    if (currentShape === "flat") {
       canvas.set("backgroundColor", "#4B612C");
 
       const flatStone = new Path(
@@ -57,11 +49,12 @@ export default function Home() {
           top: 360,
           scaleX: 1.5,
           scaleY: 0.7,
-          fill: stoneColor,
+          fill: color,
           stroke: "#3a3c42",
           strokeWidth: 3,
           selectable: false,
           evented: false,
+          name: "stoneBackground",
         }
       );
       canvas.add(flatStone);
@@ -71,14 +64,24 @@ export default function Home() {
       const t3 = new IText("1946 ✦ 2023", { top: 380, fontSize: 35, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif" });
       const t4 = new IText("Forever in our hearts", { top: 465, fontSize: 25, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
-      canvas.add(t1, t2, t3, t4);
-      [flatStone, t1, t2, t3, t4].forEach(obj => canvas.centerObjectH(obj));
+      // 디폴트 하트 모티브 추가
+      const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
+        top: 415,
+        scaleX: 0.35,
+        scaleY: 0.35,
+        fill: "#b0b3b8",
+        selectable: true,
+      });
+
+      canvas.add(t1, t2, t3, defaultHeart, t4);
+      [flatStone, t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
 
     } else {
       canvas.set("backgroundColor", "#F2F0ED");
 
       const combinedStone = new Path("M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z", {
-        top: 350, left: 140, fill: stoneColor, selectable: false, evented: false
+        top: 350, left: 140, fill: color, selectable: false, evented: false,
+        name: "stoneBackground",
       });
       
       canvas.add(combinedStone);
@@ -86,28 +89,71 @@ export default function Home() {
       const t1 = new IText("Honor Life", { top: 195, fontSize: 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 80 });
       const t2 = new IText("Honoring Life & Legacy", { top: 275, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
       const t3 = new IText("1946 ✦ 2026", { top: 335, fontSize: 22, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif", charSpacing: 10 });
+      
+      // 디폴트 하트 모티브 추가
+      const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
+        top: 380,
+        scaleX: 0.4,
+        scaleY: 0.4,
+        fill: "#b0b3b8",
+        selectable: true,
+      });
+
       const t4 = new IText("Memorials Handcrafted in Vista, CA", { top: 435, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
-      canvas.add(t1, t2, t3, t4);
-      [combinedStone, t1, t2, t3, t4].forEach(obj => canvas.centerObjectH(obj));
+      canvas.add(t1, t2, t3, defaultHeart, t4);
+      [combinedStone, t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
     }
 
     canvas.renderAll();
-    updateTextList();
+    updateObjectList();
+  };
 
-    // 캔버스 객체 변경 시 리스트 실시간 동기화
-    canvas.on("object:added", updateTextList);
-    canvas.on("object:removed", updateTextList);
-    canvas.on("text:changed", updateTextList);
+  useEffect(() => {
+    if (!canvasInstance.current) return;
+    loadInitialDesign(canvasInstance.current, shape, stoneColor);
+  }, [shape]);
 
-    return () => {
-      canvas.off("object:added", updateTextList);
-      canvas.off("object:removed", updateTextList);
-      canvas.off("text:changed", updateTextList);
-    };
-  }, [stoneColor, shape]);
+  useEffect(() => {
+    if (!canvasInstance.current) return;
+    const canvas = canvasInstance.current;
+    
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.name === "stoneBackground" || obj.selectable === false && !obj.evented) {
+        if (obj.name === "stoneBackground") obj.set("fill", stoneColor);
+      }
+    });
+    canvas.renderAll();
+  }, [stoneColor]);
 
-  // ✦ 새 텍스트 추가 함수
+  // 캔버스 개체 리스트 동기화
+  const updateObjectList = () => {
+    if (!canvasInstance.current) return;
+    const canvas = canvasInstance.current;
+    const list: { id: any; name: string; isLocked: boolean; type: string }[] = [];
+    
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.name !== "stoneBackground") {
+        if (obj instanceof IText) {
+          list.push({
+            id: obj,
+            name: `Text: ${obj.text || "Empty"}`,
+            isLocked: !obj.selectable,
+            type: "text"
+          });
+        } else if (obj instanceof Path) {
+          list.push({
+            id: obj,
+            name: "Motif (Icon)",
+            isLocked: !obj.selectable,
+            type: "motif"
+          });
+        }
+      }
+    });
+    setObjectList(list);
+  };
+
   const addCustomText = () => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -123,10 +169,9 @@ export default function Home() {
     canvas.centerObjectH(newText);
     canvas.setActiveObject(newText);
     canvas.renderAll();
-    updateTextList();
+    updateObjectList();
   };
 
-  // ✦ 모양(Motif) 추가 드롭다운 핸들러
   const handleAddMotif = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     if (!value || !canvasInstance.current) return;
@@ -134,7 +179,8 @@ export default function Home() {
 
     let pathData = "";
     if (value === "cross") {
-      pathData = "M 35,10 L 65,10 L 65,35 L 90,35 L 90,65 L 65,65 L 65,90 L 35,90 L 35,65 L 10,65 L 10,35 L 35,35 Z";
+      // ✦ 기독교 라틴 십자가(Latin Cross) 정교한 패스 데이터
+      pathData = "M 42,10 L 58,10 L 58,35 L 85,35 L 85,50 L 58,50 L 58,95 L 42,95 L 42,50 L 15,50 L 15,35 L 42,35 Z";
     } else if (value === "heart") {
       pathData = "M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z";
     } else if (value === "flower") {
@@ -154,27 +200,53 @@ export default function Home() {
     canvas.setActiveObject(motifObj);
     canvas.renderAll();
 
-    e.target.value = ""; // 드롭다운 초기화
+    e.target.value = "";
   };
 
-  // ✦ 선택된 요소 삭제 함수
-  const deleteSelected = () => {
+  // 개별 객체 잠금/해제 토글
+  const toggleLockObject = (obj: any) => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
-    const activeObjects = canvas.getActiveObjects();
+    
+    const currentSelectable = obj.selectable;
+    obj.set({
+      selectable: !currentSelectable,
+      evented: !currentSelectable,
+    });
+    canvas.discardActiveObject();
+    canvas.renderAll();
+    updateObjectList();
+  };
 
-    if (activeObjects.length > 0) {
-      activeObjects.forEach((obj) => {
-        if (obj.selectable !== false) {
-          canvas.remove(obj);
-        }
-      });
-      canvas.discardActiveObject();
-      canvas.renderAll();
-      updateTextList();
-    } else {
-      alert("Please select text or a motif to delete!");
-    }
+  // 개별 객체 삭제
+  const deleteObject = (obj: any) => {
+    if (!canvasInstance.current) return;
+    const canvas = canvasInstance.current;
+
+    canvas.remove(obj);
+    canvas.discardActiveObject();
+    canvas.renderAll();
+    updateObjectList();
+  };
+
+  const downloadImage = () => {
+    if (!canvasInstance.current) return;
+    const canvas = canvasInstance.current;
+
+    canvas.discardActiveObject();
+    canvas.renderAll();
+
+    const dataURL = canvas.toDataURL({
+      format: "png",
+      quality: 1,
+    });
+
+    const link = document.createElement("a");
+    link.href = dataURL;
+    link.download = "memorial-design.png";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -185,27 +257,41 @@ export default function Home() {
         <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "24px", fontWeight: "bold" }}>
           The Stone & Studio <span style={{ fontSize: "11px", fontFamily: "sans-serif", color: "#888", fontWeight: "normal" }}>design a memorial together</span>
         </div>
+        <button onClick={downloadImage} style={{ padding: "8px 18px", backgroundColor: "#2b2d42", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "bold" }}>
+          💾 Save & Download
+        </button>
       </header>
 
       <div style={{ display: "flex", flex: 1, overflow: "auto", width: "100%", flexWrap: "wrap" }}>
         
-        {/* 왼쪽 사이드바: 텍스트 리스트 및 요소 추가·삭제 패널 */}
+        {/* 왼쪽 사이드바 */}
         <aside style={{ width: "260px", minWidth: "260px", backgroundColor: "#f9f8f6", padding: "15px", borderRight: "1px solid #dfdad0", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: "15px" }}>
           
-          {/* 1. ON THE STONE 텍스트 리스트 */}
+          {/* ON THE STONE 리스트 (각 항목별 자물쇠 및 휴지통 아이콘 추가) */}
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
             <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>ON THE STONE</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "150px", overflowY: "auto" }}>
-              {textList.map((item, i) => (
-                <div key={i} style={{ fontSize: "12px", padding: "6px 0", borderBottom: "1px solid #f3f0ea", color: "#333", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  TEXT: {item.text}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "180px", overflowY: "auto" }}>
+              {objectList.map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", padding: "4px 0", borderBottom: "1px solid #f3f0ea", color: "#333" }}>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>
+                    {item.name}
+                  </span>
+                  <div style={{ display: "flex", gap: "6px", cursor: "pointer", fontSize: "14px" }}>
+                    {/* 자물쇠 아이콘 (클릭 시 잠금/해제 전환) */}
+                    <span onClick={() => toggleLockObject(item.id)} title={item.isLocked ? "Unlock" : "Lock"}>
+                      {item.isLocked ? "🔒" : "🔓"}
+                    </span>
+                    {/* 휴지통 아이콘 (클릭 시 삭제) */}
+                    <span onClick={() => deleteObject(item.id)} title="Delete">
+                      🗑️
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
             <button onClick={addCustomText} style={{ width: "100%", marginTop: "10px", padding: "8px", backgroundColor: "#5a644e", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}>+ Add New Text</button>
           </div>
 
-          {/* 2. 별도의 모양 추가 드롭박스 메뉴 */}
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
             <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>ADD MOTIF</h4>
             <select onChange={handleAddMotif} defaultValue="" style={{ width: "100%", padding: "10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }}>
@@ -216,20 +302,16 @@ export default function Home() {
             </select>
           </div>
 
-          {/* 3. 삭제 버튼 */}
-          <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
-            <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>EDIT / DELETE</h4>
-            <p style={{ fontSize: "11px", color: "#666", marginBottom: "8px" }}>Double-click text to edit. Select any item and click below to delete.</p>
-            <button onClick={deleteSelected} style={{ width: "100%", padding: "8px", backgroundColor: "#b91c1c", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}>Delete Selected</button>
-          </div>
-
         </aside>
 
         {/* 메인 영역 */}
-        <main style={{ flex: 1, minWidth: "300px", display: "flex", justifyContent: "center", alignItems: "flex-start", backgroundColor: "#f1ede4", paddingTop: "15px", paddingBottom: "15px", paddingLeft: "10px", paddingRight: "10px", overflowY: "auto" }}>
+        <main style={{ flex: 1, minWidth: "300px", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", backgroundColor: "#f1ede4", paddingTop: "15px", paddingBottom: "15px", paddingLeft: "10px", paddingRight: "10px", overflowY: "auto" }}>
           <div style={{ width: "100%", maxWidth: "700px", aspectRatio: "1000 / 750", display: "flex", justifyContent: "center" }}>
             <canvas ref={canvasRef} style={{ width: "100% !important", height: "100% !important", objectFit: "contain" }} />
           </div>
+          <button onClick={downloadImage} style={{ marginTop: "15px", marginBottom: "15px", padding: "12px 24px", backgroundColor: "#2b2d42", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "15px", fontWeight: "bold", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
+            📥 Download Design (PNG)
+          </button>
         </main>
 
         {/* 오른쪽 사이드바 */}
