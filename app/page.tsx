@@ -25,9 +25,7 @@ export default function Home() {
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = new Canvas(canvasRef.current, { 
-      width: 1000, 
-      height: 750, 
-      backgroundColor: "#F2F0ED" 
+      backgroundColor: "transparent" 
     });
     canvasInstance.current = canvas;
 
@@ -55,9 +53,13 @@ export default function Home() {
     const canvas = canvasInstance.current;
     
     const contentObjects = canvas.getObjects().filter((obj: any) => obj.name !== "stoneBackground");
-    const serializedObjects = contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]));
-    const json = JSON.stringify(serializedObjects);
-
+    const stateObj = {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]))
+    };
+    
+    const json = JSON.stringify(stateObj);
     const currentIndex = historyIndexRef.current;
     const currentHistory = historyRef.current.slice(0, currentIndex + 1);
 
@@ -79,11 +81,20 @@ export default function Home() {
       }
     });
 
-    const parsedObjects = JSON.parse(targetStateJson);
+    const parsedState = JSON.parse(targetStateJson);
+    const savedObjects = parsedState.objects || [];
+    const savedWidth = parsedState.canvasWidth || canvas.width;
+    const savedHeight = parsedState.canvasHeight || canvas.height;
 
-    parsedObjects.forEach((objData: any) => {
+    const dx = (canvas.width / 2) - (savedWidth / 2);
+    const dy = (canvas.height / 2) - (savedHeight / 2);
+
+    savedObjects.forEach((objData: any) => {
       let createdObj: any = null;
       const { type, text, path, ...options } = objData;
+
+      options.left = (options.left || 0) + dx;
+      options.top = (options.top || 0) + dy;
 
       if (type === "i-text" || type === "IText") {
         createdObj = new IText(text || "", options);
@@ -97,6 +108,7 @@ export default function Home() {
     });
 
     updateStoneBackground(canvas, shapeRef.current, colorRef.current);
+
     canvas.renderAll();
     updateObjectList();
     isExecutingHistoryRef.current = false;
@@ -127,46 +139,74 @@ export default function Home() {
       ? "M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z"
       : "M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z";
 
-    canvas.set("backgroundColor", isFlat ? "#4B612C" : "#F2F0ED");
+    const newWidth = isFlat ? 580 : 380;   
+    const newHeight = isFlat ? 460 : 495;  
+
+    const oldWidth = canvas.width || newWidth;
+    const oldHeight = canvas.height || newHeight;
+    const dx = (newWidth / 2) - (oldWidth / 2);
+    const dy = (newHeight / 2) - (oldHeight / 2);
+
+    if (oldWidth !== newWidth || oldHeight !== newHeight) {
+      canvas.setDimensions({ width: newWidth, height: newHeight });
+      
+      canvas.getObjects().forEach((obj: any) => {
+        if (obj.name !== "stoneBackground") {
+          obj.set({
+            left: (obj.left || 0) + dx,
+            top: (obj.top || 0) + dy
+          });
+          obj.setCoords();
+        }
+      });
+    }
+
+    // ✦ 캔버스 배경은 항상 투명하게 유지하여 글씨가 잘 보이도록 처리
+    canvas.set("backgroundColor", "transparent");
 
     const stoneBackground = new Path(pathData, {
       originX: "center",
       originY: "center",
-      left: 500,
-      top: 360,
+      left: newWidth / 2,
+      top: newHeight / 2,
       scaleX: isFlat ? 1.5 : 1,
       scaleY: isFlat ? 0.7 : 1,
       fill: color,
-      stroke: isFlat ? "#3a3c42" : undefined,
-      strokeWidth: isFlat ? 3 : 0,
+      stroke: undefined, // ✦ 플랫 비석 가장자리의 검은 선(stroke) 제거 완료
+      strokeWidth: 0,
       selectable: false,
       evented: false,
       name: "stoneBackground",
     });
 
     canvas.add(stoneBackground);
-    canvas.sendObjectToBack(stoneBackground);
+    canvas.sendObjectToBack(stoneBackground); // ✦ 비석 배경은 항상 맨 뒤로 보내 글씨가 가려지지 않게 보장
   };
 
   const loadInitialDesign = (canvas: Canvas, currentShape: string, color: string) => {
     canvas.clear();
 
+    const isFlat = currentShape === "flat";
+    canvas.setDimensions({ 
+      width: isFlat ? 580 : 380, 
+      height: isFlat ? 460 : 495 
+    });
+
     updateStoneBackground(canvas, currentShape, color);
 
-    const isFlat = currentShape === "flat";
-    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 265 : 195, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
-    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 315 : 275, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
-    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 380 : 335, fontSize: isFlat ? 35 : 22, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif" });
+    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 50 : 70, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
+    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 100 : 150, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
+    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 165 : 210, fontSize: isFlat ? 35 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif" });
     
     const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
-      top: isFlat ? 415 : 380,
+      top: isFlat ? 200 : 255,
       scaleX: isFlat ? 0.35 : 0.4,
       scaleY: isFlat ? 0.35 : 0.4,
-      fill: "#b0b3b8",
+      fill: "#ffffff",
       selectable: true,
     });
 
-    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 465 : 435, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 250 : 310, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
     canvas.add(t1, t2, t3, defaultHeart, t4);
     [t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
@@ -175,30 +215,31 @@ export default function Home() {
     updateObjectList();
     
     const contentObjects = canvas.getObjects().filter((obj: any) => obj.name !== "stoneBackground");
-    historyRef.current = [JSON.stringify(contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"])))];
+    const stateObj = {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]))
+    };
+    historyRef.current = [JSON.stringify(stateObj)];
     historyIndexRef.current = 0;
   };
 
   useEffect(() => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
-
     updateStoneBackground(canvas, shape, stoneColor);
     canvas.renderAll();
-    saveHistory();
   }, [shape]);
 
   useEffect(() => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
-    
     canvas.getObjects().forEach((obj: any) => {
       if (obj.name === "stoneBackground") {
         obj.set("fill", stoneColor);
       }
     });
     canvas.renderAll();
-    saveHistory();
   }, [stoneColor]);
 
   const updateObjectList = () => {
@@ -231,9 +272,10 @@ export default function Home() {
   const addCustomText = () => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
-
+    
+    const centerY = canvas.height ? canvas.height / 2 : 250;
     const newText = new IText("Click to edit", {
-      top: 500,
+      top: centerY + 50,
       fontSize: 24,
       fill: "#ffffff",
       fontFamily: "'Cormorant Garamond', serif",
@@ -261,11 +303,12 @@ export default function Home() {
       pathData = "M 50,30 Q 70,10 70,30 Q 90,50 70,50 Q 70,70 50,50 Q 30,70 30,50 Q 10,50 30,30 Q 30,10 50,30 Z";
     }
 
+    const centerY = canvas.height ? canvas.height / 2 : 250;
     const motifObj = new Path(pathData, {
-      top: 450,
+      top: centerY + 20,
       scaleX: 0.35,
       scaleY: 0.35,
-      fill: "#b0b3b8",
+      fill: "#ffffff",
       selectable: true,
     });
 
@@ -312,7 +355,6 @@ export default function Home() {
     canvas.discardActiveObject();
     canvas.renderAll();
 
-    // ✦ Fabric.js v6 타입 요구사항에 맞추어 multiplier 속성 추가
     const dataURL = canvas.toDataURL({
       format: "png",
       quality: 1,
@@ -333,10 +375,20 @@ export default function Home() {
       
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 30px", borderBottom: "1px solid #dfdad0", backgroundColor: "#f9f8f6", flexShrink: 0 }}>
         <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "24px", fontWeight: "bold" }}>
-          The Stone & Studio <span style={{ fontSize: "11px", fontFamily: "sans-serif", color: "#888", fontWeight: "normal" }}>design a memorial together</span>
+          Create Your Memorial <span style={{ fontSize: "11px", fontFamily: "sans-serif", color: "#888", fontWeight: "normal" }}>design a memorial together</span>
         </div>
-        <button onClick={downloadImage} style={{ padding: "8px 18px", backgroundColor: "#2b2d42", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "bold" }}>
-          💾 Save & Download
+        
+        <button 
+          onClick={downloadImage} 
+          className="group"
+          style={{ padding: "6px 16px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold", display: "flex", alignItems: "center", gap: "6px" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          Save & Download
         </button>
       </header>
 
@@ -362,13 +414,41 @@ export default function Home() {
                   <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>
                     {item.name}
                   </span>
-                  <div style={{ display: "flex", gap: "6px", cursor: "pointer", fontSize: "14px" }}>
-                    <span onClick={() => toggleLockObject(item.id)} title={item.isLocked ? "Unlock" : "Lock"}>
-                      {item.isLocked ? "🔒" : "🔓"}
+                  <div style={{ display: "flex", gap: "8px", cursor: "pointer", alignItems: "center" }}>
+                    
+                    <span 
+                      onClick={() => toggleLockObject(item.id)} 
+                      title={item.isLocked ? "Unlock" : "Lock"}
+                      style={{ display: "flex", alignItems: "center", color: "#666" }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
+                      onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
+                    >
+                      {item.isLocked ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                        </svg>
+                      )}
                     </span>
-                    <span onClick={() => deleteObject(item.id)} title="Delete">
-                      🗑️
+
+                    <span 
+                      onClick={() => deleteObject(item.id)} 
+                      title="Delete"
+                      style={{ display: "flex", alignItems: "center", color: "#666" }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
+                      onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
                     </span>
+
                   </div>
                 </div>
               ))}
@@ -388,14 +468,11 @@ export default function Home() {
 
         </aside>
 
-        {/* 메인 영역 */}
-        <main style={{ flex: 1, minWidth: "300px", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", backgroundColor: "#f1ede4", paddingTop: "15px", paddingBottom: "15px", paddingLeft: "10px", paddingRight: "10px", overflowY: "auto" }}>
-          <div style={{ width: "100%", maxWidth: "700px", aspectRatio: "1000 / 750", display: "flex", justifyContent: "center" }}>
-            <canvas ref={canvasRef} style={{ width: "100% !important", height: "100% !important", objectFit: "contain" }} />
+        {/* 캔버스 메인 영역 */}
+        <main style={{ flex: 1, minWidth: "300px", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", backgroundColor: "#f1ede4", paddingTop: "30px", paddingBottom: "20px", paddingLeft: "20px", paddingRight: "20px", overflowY: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "fit-content", height: "fit-content" }}>
+            <canvas ref={canvasRef} />
           </div>
-          <button onClick={downloadImage} style={{ marginTop: "15px", marginBottom: "15px", padding: "12px 24px", backgroundColor: "#2b2d42", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "15px", fontWeight: "bold", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
-            📥 Download Design (PNG)
-          </button>
         </main>
 
         {/* 오른쪽 사이드바 */}
