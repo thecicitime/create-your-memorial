@@ -50,7 +50,6 @@ export default function Home() {
     };
   }, []);
 
-  // ✦ 임시 캔버스 없이 객체 속성 배열로 안전하게 히스토리 백업 (경고 원천 차단)
   const saveHistory = () => {
     if (!canvasInstance.current || isExecutingHistoryRef.current) return;
     const canvas = canvasInstance.current;
@@ -82,7 +81,6 @@ export default function Home() {
 
     const parsedObjects = JSON.parse(targetStateJson);
 
-    // v6 호환 방식으로 객체 재생성 및 추가
     parsedObjects.forEach((objData: any) => {
       let createdObj: any = null;
       const { type, text, path, ...options } = objData;
@@ -314,9 +312,11 @@ export default function Home() {
     canvas.discardActiveObject();
     canvas.renderAll();
 
+    // ✦ Fabric.js v6 타입 요구사항에 맞추어 multiplier 속성 추가
     const dataURL = canvas.toDataURL({
       format: "png",
       quality: 1,
+      multiplier: 1,
     });
 
     const link = document.createElement("a");
