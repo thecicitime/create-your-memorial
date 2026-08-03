@@ -8,8 +8,19 @@ export default function Home() {
 
   const [stoneColor, setStoneColor] = useState("#15161a");
   const [shape, setShape] = useState("serpentine");
-  // 리스트 관리를 위해 고유 id와 개체 참조를 포함하도록 수정
   const [objectList, setObjectList] = useState<{ id: any; name: string; isLocked: boolean; type: string }[]>([]);
+
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const isExecutingHistoryRef = useRef<boolean>(false);
+
+  const shapeRef = useRef(shape);
+  const colorRef = useRef(stoneColor);
+
+  useEffect(() => {
+    shapeRef.current = shape;
+    colorRef.current = stoneColor;
+  }, [shape, stoneColor]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -22,7 +33,12 @@ export default function Home() {
 
     loadInitialDesign(canvas, shape, stoneColor);
 
-    const syncList = () => updateObjectList();
+    const syncList = () => {
+      if (isExecutingHistoryRef.current) return;
+      updateObjectList();
+      saveHistory();
+    };
+
     canvas.on("object:added", syncList);
     canvas.on("object:removed", syncList);
     canvas.on("text:changed", syncList);
@@ -34,84 +50,144 @@ export default function Home() {
     };
   }, []);
 
+  // ✦ 임시 캔버스 없이 객체 속성 배열로 안전하게 히스토리 백업 (경고 원천 차단)
+  const saveHistory = () => {
+    if (!canvasInstance.current || isExecutingHistoryRef.current) return;
+    const canvas = canvasInstance.current;
+    
+    const contentObjects = canvas.getObjects().filter((obj: any) => obj.name !== "stoneBackground");
+    const serializedObjects = contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]));
+    const json = JSON.stringify(serializedObjects);
+
+    const currentIndex = historyIndexRef.current;
+    const currentHistory = historyRef.current.slice(0, currentIndex + 1);
+
+    if (currentHistory[currentHistory.length - 1] === json) return;
+
+    historyRef.current = [...currentHistory, json];
+    historyIndexRef.current = historyRef.current.length - 1;
+  };
+
+  const applyState = (targetStateJson: string) => {
+    if (!canvasInstance.current) return;
+    const canvas = canvasInstance.current;
+
+    isExecutingHistoryRef.current = true;
+
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.name !== "stoneBackground") {
+        canvas.remove(obj);
+      }
+    });
+
+    const parsedObjects = JSON.parse(targetStateJson);
+
+    // v6 호환 방식으로 객체 재생성 및 추가
+    parsedObjects.forEach((objData: any) => {
+      let createdObj: any = null;
+      const { type, text, path, ...options } = objData;
+
+      if (type === "i-text" || type === "IText") {
+        createdObj = new IText(text || "", options);
+      } else if (type === "path") {
+        createdObj = new Path(path, options);
+      }
+
+      if (createdObj) {
+        canvas.add(createdObj);
+      }
+    });
+
+    updateStoneBackground(canvas, shapeRef.current, colorRef.current);
+    canvas.renderAll();
+    updateObjectList();
+    isExecutingHistoryRef.current = false;
+  };
+
+  const handleUndo = () => {
+    if (!canvasInstance.current) return;
+    if (historyIndexRef.current > 0) {
+      historyIndexRef.current -= 1;
+      applyState(historyRef.current[historyIndexRef.current]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (!canvasInstance.current) return;
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyIndexRef.current += 1;
+      applyState(historyRef.current[historyIndexRef.current]);
+    }
+  };
+
+  const updateStoneBackground = (canvas: Canvas, currentShape: string, color: string) => {
+    const existingBgs = canvas.getObjects().filter((obj: any) => obj.name === "stoneBackground");
+    existingBgs.forEach((bg) => canvas.remove(bg));
+
+    const isFlat = currentShape === "flat";
+    const pathData = isFlat
+      ? "M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z"
+      : "M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z";
+
+    canvas.set("backgroundColor", isFlat ? "#4B612C" : "#F2F0ED");
+
+    const stoneBackground = new Path(pathData, {
+      originX: "center",
+      originY: "center",
+      left: 500,
+      top: 360,
+      scaleX: isFlat ? 1.5 : 1,
+      scaleY: isFlat ? 0.7 : 1,
+      fill: color,
+      stroke: isFlat ? "#3a3c42" : undefined,
+      strokeWidth: isFlat ? 3 : 0,
+      selectable: false,
+      evented: false,
+      name: "stoneBackground",
+    });
+
+    canvas.add(stoneBackground);
+    canvas.sendObjectToBack(stoneBackground);
+  };
+
   const loadInitialDesign = (canvas: Canvas, currentShape: string, color: string) => {
     canvas.clear();
 
-    if (currentShape === "flat") {
-      canvas.set("backgroundColor", "#4B612C");
+    updateStoneBackground(canvas, currentShape, color);
 
-      const flatStone = new Path(
-        "M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z",
-        {
-          originX: "center",
-          originY: "center",
-          left: 500,
-          top: 360,
-          scaleX: 1.5,
-          scaleY: 0.7,
-          fill: color,
-          stroke: "#3a3c42",
-          strokeWidth: 3,
-          selectable: false,
-          evented: false,
-          name: "stoneBackground",
-        }
-      );
-      canvas.add(flatStone);
+    const isFlat = currentShape === "flat";
+    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 265 : 195, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
+    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 315 : 275, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
+    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 380 : 335, fontSize: isFlat ? 35 : 22, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif" });
+    
+    const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
+      top: isFlat ? 415 : 380,
+      scaleX: isFlat ? 0.35 : 0.4,
+      scaleY: isFlat ? 0.35 : 0.4,
+      fill: "#b0b3b8",
+      selectable: true,
+    });
 
-      const t1 = new IText("Hello", { top: 265, fontSize: 30, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 140 });
-      const t2 = new IText("Honor Life", { top: 315, fontSize: 55, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
-      const t3 = new IText("1946 ✦ 2023", { top: 380, fontSize: 35, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif" });
-      const t4 = new IText("Forever in our hearts", { top: 465, fontSize: 25, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 465 : 435, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
-      // 디폴트 하트 모티브 추가
-      const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
-        top: 415,
-        scaleX: 0.35,
-        scaleY: 0.35,
-        fill: "#b0b3b8",
-        selectable: true,
-      });
-
-      canvas.add(t1, t2, t3, defaultHeart, t4);
-      [flatStone, t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
-
-    } else {
-      canvas.set("backgroundColor", "#F2F0ED");
-
-      const combinedStone = new Path("M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z", {
-        top: 350, left: 140, fill: color, selectable: false, evented: false,
-        name: "stoneBackground",
-      });
-      
-      canvas.add(combinedStone);
-
-      const t1 = new IText("Honor Life", { top: 195, fontSize: 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 80 });
-      const t2 = new IText("Honoring Life & Legacy", { top: 275, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: 20 });
-      const t3 = new IText("1946 ✦ 2026", { top: 335, fontSize: 22, fill: "#cccccc", fontFamily: "'Cormorant Garamond', serif", charSpacing: 10 });
-      
-      // 디폴트 하트 모티브 추가
-      const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
-        top: 380,
-        scaleX: 0.4,
-        scaleY: 0.4,
-        fill: "#b0b3b8",
-        selectable: true,
-      });
-
-      const t4 = new IText("Memorials Handcrafted in Vista, CA", { top: 435, fontSize: 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
-
-      canvas.add(t1, t2, t3, defaultHeart, t4);
-      [combinedStone, t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
-    }
+    canvas.add(t1, t2, t3, defaultHeart, t4);
+    [t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
 
     canvas.renderAll();
     updateObjectList();
+    
+    const contentObjects = canvas.getObjects().filter((obj: any) => obj.name !== "stoneBackground");
+    historyRef.current = [JSON.stringify(contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"])))];
+    historyIndexRef.current = 0;
   };
 
   useEffect(() => {
     if (!canvasInstance.current) return;
-    loadInitialDesign(canvasInstance.current, shape, stoneColor);
+    const canvas = canvasInstance.current;
+
+    updateStoneBackground(canvas, shape, stoneColor);
+    canvas.renderAll();
+    saveHistory();
   }, [shape]);
 
   useEffect(() => {
@@ -119,14 +195,14 @@ export default function Home() {
     const canvas = canvasInstance.current;
     
     canvas.getObjects().forEach((obj: any) => {
-      if (obj.name === "stoneBackground" || obj.selectable === false && !obj.evented) {
-        if (obj.name === "stoneBackground") obj.set("fill", stoneColor);
+      if (obj.name === "stoneBackground") {
+        obj.set("fill", stoneColor);
       }
     });
     canvas.renderAll();
+    saveHistory();
   }, [stoneColor]);
 
-  // 캔버스 개체 리스트 동기화
   const updateObjectList = () => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -170,6 +246,7 @@ export default function Home() {
     canvas.setActiveObject(newText);
     canvas.renderAll();
     updateObjectList();
+    saveHistory();
   };
 
   const handleAddMotif = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -179,7 +256,6 @@ export default function Home() {
 
     let pathData = "";
     if (value === "cross") {
-      // ✦ 기독교 라틴 십자가(Latin Cross) 정교한 패스 데이터
       pathData = "M 42,10 L 58,10 L 58,35 L 85,35 L 85,50 L 58,50 L 58,95 L 42,95 L 42,50 L 15,50 L 15,35 L 42,35 Z";
     } else if (value === "heart") {
       pathData = "M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z";
@@ -201,9 +277,10 @@ export default function Home() {
     canvas.renderAll();
 
     e.target.value = "";
+    updateObjectList();
+    saveHistory();
   };
 
-  // 개별 객체 잠금/해제 토글
   const toggleLockObject = (obj: any) => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -216,9 +293,9 @@ export default function Home() {
     canvas.discardActiveObject();
     canvas.renderAll();
     updateObjectList();
+    saveHistory();
   };
 
-  // 개별 객체 삭제
   const deleteObject = (obj: any) => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -227,6 +304,7 @@ export default function Home() {
     canvas.discardActiveObject();
     canvas.renderAll();
     updateObjectList();
+    saveHistory();
   };
 
   const downloadImage = () => {
@@ -267,21 +345,27 @@ export default function Home() {
         {/* 왼쪽 사이드바 */}
         <aside style={{ width: "260px", minWidth: "260px", backgroundColor: "#f9f8f6", padding: "15px", borderRight: "1px solid #dfdad0", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: "15px" }}>
           
-          {/* ON THE STONE 리스트 (각 항목별 자물쇠 및 휴지통 아이콘 추가) */}
+          <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "10px", display: "flex", gap: "8px" }}>
+            <button onClick={handleUndo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+              ↶ Undo
+            </button>
+            <button onClick={handleRedo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+              Redo ↷
+            </button>
+          </div>
+
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
             <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>ON THE STONE</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "180px", overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "160px", overflowY: "auto" }}>
               {objectList.map((item, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", padding: "4px 0", borderBottom: "1px solid #f3f0ea", color: "#333" }}>
                   <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>
                     {item.name}
                   </span>
                   <div style={{ display: "flex", gap: "6px", cursor: "pointer", fontSize: "14px" }}>
-                    {/* 자물쇠 아이콘 (클릭 시 잠금/해제 전환) */}
                     <span onClick={() => toggleLockObject(item.id)} title={item.isLocked ? "Unlock" : "Lock"}>
                       {item.isLocked ? "🔒" : "🔓"}
                     </span>
-                    {/* 휴지통 아이콘 (클릭 시 삭제) */}
                     <span onClick={() => deleteObject(item.id)} title="Delete">
                       🗑️
                     </span>
