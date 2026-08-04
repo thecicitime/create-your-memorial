@@ -5,10 +5,13 @@ import { Canvas, IText, Path } from "fabric";
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasInstance = useRef<Canvas | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const [stoneColor, setStoneColor] = useState("#15161a");
   const [shape, setShape] = useState("serpentine");
   const [objectList, setObjectList] = useState<{ id: any; name: string; isLocked: boolean; type: string }[]>([]);
+  
+  const [selectedObjId, setSelectedObjId] = useState<any>(null);
 
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number>(-1);
@@ -22,10 +25,23 @@ export default function Home() {
     colorRef.current = stoneColor;
   }, [shape, stoneColor]);
 
+  const getBaseDimensions = (currentShape: string) => {
+    const isFlat = currentShape === "flat";
+    return {
+      width: isFlat ? 580 : 380,
+      height: isFlat ? 460 : 495
+    };
+  };
+
   useEffect(() => {
     if (!canvasRef.current) return;
+    
+    const dims = getBaseDimensions(shape);
     const canvas = new Canvas(canvasRef.current, { 
-      backgroundColor: "transparent" 
+      width: dims.width,
+      height: dims.height,
+      backgroundColor: "transparent",
+      enableRetinaScaling: true
     });
     canvasInstance.current = canvas;
 
@@ -42,12 +58,23 @@ export default function Home() {
     canvas.on("text:changed", syncList);
     canvas.on("object:modified", syncList);
 
+    canvas.on("selection:created", (e) => {
+      setSelectedObjId(e.selected?.[0] || null);
+    });
+    canvas.on("selection:updated", (e) => {
+      setSelectedObjId(e.selected?.[0] || null);
+    });
+    canvas.on("selection:cleared", () => {
+      setSelectedObjId(null);
+    });
+
     return () => { 
       canvas.dispose(); 
       canvasInstance.current = null;
     };
   }, []);
 
+  // ✦ 히스토리 저장 시 graphicType 등의 커스텀 속성이 누락되지 않도록 toObject에 추가
   const saveHistory = () => {
     if (!canvasInstance.current || isExecutingHistoryRef.current) return;
     const canvas = canvasInstance.current;
@@ -56,7 +83,7 @@ export default function Home() {
     const stateObj = {
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]))
+      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented", "graphicType"]))
     };
     
     const json = JSON.stringify(stateObj);
@@ -69,6 +96,7 @@ export default function Home() {
     historyIndexRef.current = historyRef.current.length - 1;
   };
 
+  // ✦ Undo/Redo 시 Path(그래픽) 객체가 올바른 패스 데이터와 속성으로 완벽히 복원되도록 수정
   const applyState = (targetStateJson: string) => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -98,8 +126,12 @@ export default function Home() {
 
       if (type === "i-text" || type === "IText") {
         createdObj = new IText(text || "", options);
-      } else if (type === "path") {
+      } else if (type === "path" || type === "Path") {
+        // Path 객체 생성 시 path 데이터와 graphicType 옵션을 명시적으로 전달
         createdObj = new Path(path, options);
+        if (objData.graphicType) {
+          createdObj.graphicType = objData.graphicType;
+        }
       }
 
       if (createdObj) {
@@ -139,40 +171,20 @@ export default function Home() {
       ? "M 40,460 L 40,40 Q 40,20 60,20 L 420,20 Q 440,20 440,40 L 440,460 Q 440,480 420,480 L 60,480 Q 40,480 40,460 Z"
       : "M 50,440 L 50,150 Q 50,20 210,20 Q 370,20 370,150 L 370,440 L 430,440 L 430,515 L -10,515 L -10,440 Z";
 
-    const newWidth = isFlat ? 580 : 380;   
-    const newHeight = isFlat ? 460 : 495;  
+    const dims = getBaseDimensions(currentShape);
+    canvas.setDimensions({ width: dims.width, height: dims.height });
 
-    const oldWidth = canvas.width || newWidth;
-    const oldHeight = canvas.height || newHeight;
-    const dx = (newWidth / 2) - (oldWidth / 2);
-    const dy = (newHeight / 2) - (oldHeight / 2);
-
-    if (oldWidth !== newWidth || oldHeight !== newHeight) {
-      canvas.setDimensions({ width: newWidth, height: newHeight });
-      
-      canvas.getObjects().forEach((obj: any) => {
-        if (obj.name !== "stoneBackground") {
-          obj.set({
-            left: (obj.left || 0) + dx,
-            top: (obj.top || 0) + dy
-          });
-          obj.setCoords();
-        }
-      });
-    }
-
-    // ✦ 캔버스 배경은 항상 투명하게 유지하여 글씨가 잘 보이도록 처리
     canvas.set("backgroundColor", "transparent");
 
     const stoneBackground = new Path(pathData, {
       originX: "center",
       originY: "center",
-      left: newWidth / 2,
-      top: newHeight / 2,
+      left: dims.width / 2,
+      top: dims.height / 2,
       scaleX: isFlat ? 1.5 : 1,
       scaleY: isFlat ? 0.7 : 1,
       fill: color,
-      stroke: undefined, // ✦ 플랫 비석 가장자리의 검은 선(stroke) 제거 완료
+      stroke: undefined,
       strokeWidth: 0,
       selectable: false,
       evented: false,
@@ -180,33 +192,32 @@ export default function Home() {
     });
 
     canvas.add(stoneBackground);
-    canvas.sendObjectToBack(stoneBackground); // ✦ 비석 배경은 항상 맨 뒤로 보내 글씨가 가려지지 않게 보장
+    canvas.sendObjectToBack(stoneBackground);
   };
 
   const loadInitialDesign = (canvas: Canvas, currentShape: string, color: string) => {
     canvas.clear();
 
-    const isFlat = currentShape === "flat";
-    canvas.setDimensions({ 
-      width: isFlat ? 580 : 380, 
-      height: isFlat ? 460 : 495 
-    });
+    const dims = getBaseDimensions(currentShape);
+    canvas.setDimensions({ width: dims.width, height: dims.height });
 
     updateStoneBackground(canvas, currentShape, color);
 
-    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 50 : 70, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
-    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 100 : 150, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
-    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 165 : 210, fontSize: isFlat ? 35 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif" });
+    const isFlat = currentShape === "flat";
+    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 95 : 70, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
+    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 145 : 150, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
+    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 210 : 210, fontSize: isFlat ? 35 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif" });
     
     const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
-      top: isFlat ? 200 : 255,
+      top: isFlat ? 255 : 255,
       scaleX: isFlat ? 0.35 : 0.4,
       scaleY: isFlat ? 0.35 : 0.4,
       fill: "#ffffff",
       selectable: true,
-    });
+      graphicType: "Heart",
+    } as any);
 
-    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 250 : 310, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 305 : 310, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
 
     canvas.add(t1, t2, t3, defaultHeart, t4);
     [t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
@@ -218,7 +229,7 @@ export default function Home() {
     const stateObj = {
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented"]))
+      objects: contentObjects.map(obj => obj.toObject(["name", "selectable", "evented", "graphicType"]))
     };
     historyRef.current = [JSON.stringify(stateObj)];
     historyIndexRef.current = 0;
@@ -257,9 +268,10 @@ export default function Home() {
             type: "text"
           });
         } else if (obj instanceof Path) {
+          const gType = obj.graphicType || "Graphic";
           list.push({
             id: obj,
-            name: "Motif (Icon)",
+            name: `Graphic: ${gType}`,
             isLocked: !obj.selectable,
             type: "motif"
           });
@@ -295,12 +307,17 @@ export default function Home() {
     const canvas = canvasInstance.current;
 
     let pathData = "";
+    let graphicName = "";
+
     if (value === "cross") {
       pathData = "M 42,10 L 58,10 L 58,35 L 85,35 L 85,50 L 58,50 L 58,95 L 42,95 L 42,50 L 15,50 L 15,35 L 42,35 Z";
+      graphicName = "Cross";
     } else if (value === "heart") {
       pathData = "M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z";
+      graphicName = "Heart";
     } else if (value === "flower") {
       pathData = "M 50,30 Q 70,10 70,30 Q 90,50 70,50 Q 70,70 50,50 Q 30,70 30,50 Q 10,50 30,30 Q 30,10 50,30 Z";
+      graphicName = "Flower";
     }
 
     const centerY = canvas.height ? canvas.height / 2 : 250;
@@ -310,7 +327,8 @@ export default function Home() {
       scaleY: 0.35,
       fill: "#ffffff",
       selectable: true,
-    });
+      graphicType: graphicName,
+    } as any);
 
     canvas.add(motifObj);
     canvas.centerObjectH(motifObj);
@@ -369,6 +387,12 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
+  const uniformSelectFontStyle = {
+    fontSize: "12px",
+    fontFamily: "sans-serif",
+    fontWeight: "normal" as const,
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", backgroundColor: "#efece6", overflow: "hidden", fontFamily: "sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet" />
@@ -380,8 +404,7 @@ export default function Home() {
         
         <button 
           onClick={downloadImage} 
-          className="group"
-          style={{ padding: "6px 16px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold", display: "flex", alignItems: "center", gap: "6px" }}
+          style={{ padding: "6px 16px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", ...uniformSelectFontStyle, fontWeight: "bold", display: "flex", alignItems: "center", gap: "6px" }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
@@ -392,74 +415,105 @@ export default function Home() {
         </button>
       </header>
 
-      <div style={{ display: "flex", flex: 1, overflow: "auto", width: "100%", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flex: 1, overflowY: "auto", width: "100%", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-start" }}>
         
         {/* 왼쪽 사이드바 */}
-        <aside style={{ width: "260px", minWidth: "260px", backgroundColor: "#f9f8f6", padding: "15px", borderRight: "1px solid #dfdad0", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: "15px" }}>
+        <aside style={{ width: "260px", minWidth: "260px", backgroundColor: "#f9f8f6", padding: "15px", borderRight: "1px solid #dfdad0", borderBottom: "1px solid #dfdad0", display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: "15px", flexShrink: 0, order: 1 }}>
           
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "10px", display: "flex", gap: "8px" }}>
-            <button onClick={handleUndo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+            <button onClick={handleUndo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", ...uniformSelectFontStyle, fontWeight: "bold" }}>
               ↶ Undo
             </button>
-            <button onClick={handleRedo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+            <button onClick={handleRedo} style={{ flex: 1, padding: "6px", backgroundColor: "#4B612C", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", ...uniformSelectFontStyle, fontWeight: "bold" }}>
               Redo ↷
             </button>
           </div>
 
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
-            <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>ON THE STONE</h4>
+            <h4 style={{ ...uniformSelectFontStyle, color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>On The Stone</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "160px", overflowY: "auto" }}>
-              {objectList.map((item, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", padding: "4px 0", borderBottom: "1px solid #f3f0ea", color: "#333" }}>
-                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px" }}>
-                    {item.name}
-                  </span>
-                  <div style={{ display: "flex", gap: "8px", cursor: "pointer", alignItems: "center" }}>
-                    
-                    <span 
-                      onClick={() => toggleLockObject(item.id)} 
-                      title={item.isLocked ? "Unlock" : "Lock"}
-                      style={{ display: "flex", alignItems: "center", color: "#666" }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
-                      onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
-                    >
-                      {item.isLocked ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                          <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
-                        </svg>
-                      )}
-                    </span>
+              {objectList.map((item, i) => {
+                const isSelected = selectedObjId === item.id;
 
-                    <span 
-                      onClick={() => deleteObject(item.id)} 
-                      title="Delete"
-                      style={{ display: "flex", alignItems: "center", color: "#666" }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
-                      onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
+                return (
+                  <div 
+                    key={i} 
+                    onClick={() => {
+                      if (canvasInstance.current) {
+                        canvasInstance.current.setActiveObject(item.id);
+                        canvasInstance.current.renderAll();
+                        setSelectedObjId(item.id);
+                      }
+                    }}
+                    style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      justifyContent: "space-between", 
+                      fontSize: "12px", 
+                      padding: "6px 8px", 
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      backgroundColor: isSelected ? "#f9f8f6" : "transparent",
+                      borderBottom: "1px solid #f3f0ea", 
+                      color: "#333" 
+                    }}
+                  >
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "140px", ...uniformSelectFontStyle }}>
+                      {item.name}
                     </span>
+                    <div style={{ display: "flex", gap: "8px", cursor: "pointer", alignItems: "center" }}>
+                      
+                      <span 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLockObject(item.id);
+                        }} 
+                        title={item.isLocked ? "Unlock" : "Lock"}
+                        style={{ display: "flex", alignItems: "center", color: "#666" }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
+                        onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
+                      >
+                        {item.isLocked ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                          </svg>
+                        )}
+                      </span>
 
+                      <span 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteObject(item.id);
+                        }} 
+                        title="Delete"
+                        style={{ display: "flex", alignItems: "center", color: "#666" }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = "#4B612C"}
+                        onMouseLeave={(e) => e.currentTarget.style.color = "#666"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                      </span>
+
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <button onClick={addCustomText} style={{ width: "100%", marginTop: "10px", padding: "8px", backgroundColor: "#5a644e", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }}>+ Add New Text</button>
+            <button onClick={addCustomText} style={{ width: "100%", marginTop: "10px", padding: "8px", backgroundColor: "#5a644e", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", ...uniformSelectFontStyle }}>+ Add New Text</button>
           </div>
 
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "12px" }}>
-            <h4 style={{ fontSize: "11px", color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>ADD MOTIF</h4>
-            <select onChange={handleAddMotif} defaultValue="" style={{ width: "100%", padding: "10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }}>
-              <option value="" disabled>Select a motif...</option>
+            <h4 style={{ ...uniformSelectFontStyle, color: "#777", margin: "0 0 10px 0", fontWeight: "bold" }}>Graphics</h4>
+            <select onChange={handleAddMotif} defaultValue="" style={{ width: "100%", padding: "10px", borderRadius: "4px", ...uniformSelectFontStyle, cursor: "pointer" }}>
+              <option value="" disabled>Select a graphic...</option>
               <option value="cross">Add Cross</option>
               <option value="heart">Add Heart</option>
               <option value="flower">Add Flower</option>
@@ -469,24 +523,53 @@ export default function Home() {
         </aside>
 
         {/* 캔버스 메인 영역 */}
-        <main style={{ flex: 1, minWidth: "300px", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", backgroundColor: "#f1ede4", paddingTop: "30px", paddingBottom: "20px", paddingLeft: "20px", paddingRight: "20px", overflowY: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "fit-content", height: "fit-content" }}>
-            <canvas ref={canvasRef} />
+        <main 
+          ref={wrapperRef} 
+          onClick={() => {
+            if (canvasInstance.current) {
+              canvasInstance.current.discardActiveObject();
+              canvasInstance.current.renderAll();
+              setSelectedObjId("stoneBg");
+            }
+          }}
+          style={{ 
+            flex: 1, 
+            minWidth: "300px", 
+            display: "flex", 
+            flexDirection: "column", 
+            justifyContent: "flex-start", 
+            alignItems: "center", 
+            backgroundColor: "#f9f8f6", 
+            paddingTop: "30px", 
+            paddingBottom: "20px", 
+            paddingLeft: "20px", 
+            paddingRight: "20px", 
+            overflow: "hidden", 
+            order: 2,
+            cursor: "pointer",
+            transition: "background-color 0.2s ease"
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ width: "100%", maxWidth: shape === "flat" ? "580px" : "380px", aspectRatio: shape === "flat" ? "580 / 460" : "380 / 495", display: "flex", justifyContent: "center", alignItems: "center" }}
+          >
+            <canvas ref={canvasRef} style={{ width: "100% !important", height: "100% !important", objectFit: "contain" }} />
           </div>
         </main>
 
         {/* 오른쪽 사이드바 */}
-        <aside style={{ width: "360px", minWidth: "360px", backgroundColor: "#f9f8f6", padding: "20px", borderLeft: "1px solid #dfdad0", display: "flex", flexDirection: "column", gap: "15px", overflowY: "auto", flexShrink: 0 }}>
+        <aside style={{ width: "360px", minWidth: "360px", backgroundColor: "#f9f8f6", padding: "20px", borderLeft: "1px solid #dfdad0", borderBottom: "1px solid #dfdad0", display: "flex", flexDirection: "column", gap: "15px", flexShrink: 0, order: 3 }}>
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "15px" }}>
-            <h4>THE STONE</h4>
-            <span style={{ fontSize: "12px", color: "#888" }}>Granite</span>
+            <h4 style={{ ...uniformSelectFontStyle, fontWeight: "bold", margin: "0 0 4px 0" }}>The Stone</h4>
+            <span style={{ fontSize: "12px", color: "#888", ...uniformSelectFontStyle }}>Granite</span>
             <div style={{ display: "flex", gap: "8px", margin: "10px 0" }}>
               {["#15161a", "#292b33", "#747885", "#56382d", "#aa8986", "#3d4757"].map((c) => (
                 <div key={c} onClick={() => setStoneColor(c)} style={{ width: "34px", height: "34px", borderRadius: "50%", backgroundColor: c, cursor: "pointer", border: stoneColor === c ? "3px solid #5a644e" : "1px solid #ddd" }}></div>
               ))}
             </div>
-            <select value={shape} onChange={(e) => setShape(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "4px" }}>
-              <option value="serpentine">Serpentine top</option>
+            <select value={shape} onChange={(e) => setShape(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "4px", ...uniformSelectFontStyle }}>
+              <option value="serpentine">Serpentine Top</option>
               <option value="flat">Flat</option>
             </select>
           </div>
