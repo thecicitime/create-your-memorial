@@ -40,7 +40,7 @@ export default function Home() {
     const canvas = new Canvas(canvasRef.current, { 
       width: dims.width,
       height: dims.height,
-      backgroundColor: "transparent",
+      backgroundColor: "#f9f8f6",
       enableRetinaScaling: true
     });
     canvasInstance.current = canvas;
@@ -74,7 +74,6 @@ export default function Home() {
     };
   }, []);
 
-  // ✦ 히스토리 저장 시 graphicType 등의 커스텀 속성이 누락되지 않도록 toObject에 추가
   const saveHistory = () => {
     if (!canvasInstance.current || isExecutingHistoryRef.current) return;
     const canvas = canvasInstance.current;
@@ -96,7 +95,6 @@ export default function Home() {
     historyIndexRef.current = historyRef.current.length - 1;
   };
 
-  // ✦ Undo/Redo 시 Path(그래픽) 객체가 올바른 패스 데이터와 속성으로 완벽히 복원되도록 수정
   const applyState = (targetStateJson: string) => {
     if (!canvasInstance.current) return;
     const canvas = canvasInstance.current;
@@ -127,10 +125,9 @@ export default function Home() {
       if (type === "i-text" || type === "IText") {
         createdObj = new IText(text || "", options);
       } else if (type === "path" || type === "Path") {
-        // Path 객체 생성 시 path 데이터와 graphicType 옵션을 명시적으로 전달
         createdObj = new Path(path, options);
         if (objData.graphicType) {
-          createdObj.graphicType = objData.graphicType;
+          (createdObj as any).graphicType = objData.graphicType;
         }
       }
 
@@ -174,7 +171,7 @@ export default function Home() {
     const dims = getBaseDimensions(currentShape);
     canvas.setDimensions({ width: dims.width, height: dims.height });
 
-    canvas.set("backgroundColor", "transparent");
+    canvas.set("backgroundColor", "#f9f8f6");
 
     const stoneBackground = new Path(pathData, {
       originX: "center",
@@ -204,12 +201,36 @@ export default function Home() {
     updateStoneBackground(canvas, currentShape, color);
 
     const isFlat = currentShape === "flat";
-    const t1 = new IText(isFlat ? "Hello" : "Honor Life", { top: isFlat ? 95 : 70, fontSize: isFlat ? 30 : 46, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 140 : 80 });
-    const t2 = new IText(isFlat ? "Honor Life" : "Honoring Life & Legacy", { top: isFlat ? 145 : 150, fontSize: isFlat ? 55 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", charSpacing: isFlat ? 20 : 20 });
-    const t3 = new IText(isFlat ? "1946 ✦ 2023" : "1946 ✦ 2026", { top: isFlat ? 210 : 210, fontSize: isFlat ? 35 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif" });
+    
+    // ✦ flat 스톤일 때 각 아이템들이 직사각형 안에서 수직으로 조화롭게 정렬되도록 top 위치 재조정
+    const t1 = new IText(isFlat ? "Honor Life" : "Honor Life", { 
+      top: isFlat ? 85 : 70, 
+      fontSize: isFlat ? 38 : 46, 
+      fill: "#ffffff", 
+      fontFamily: "'Cormorant Garamond', serif", 
+      charSpacing: isFlat ? 40 : 80,
+      textAlign: "center"
+    });
+    
+    const t2 = new IText(isFlat ? "Honoring Life & Legacy" : "Honoring Life & Legacy", { 
+      top: isFlat ? 140 : 150, 
+      fontSize: isFlat ? 22 : 22, 
+      fill: "#ffffff", 
+      fontFamily: "'Cormorant Garamond', serif", 
+      charSpacing: 20,
+      textAlign: "center"
+    });
+    
+    const t3 = new IText(isFlat ? "1946 ✦ 2026" : "1946 ✦ 2026", { 
+      top: isFlat ? 185 : 210, 
+      fontSize: isFlat ? 22 : 22, 
+      fill: "#ffffff", 
+      fontFamily: "'Cormorant Garamond', serif",
+      textAlign: "center"
+    });
     
     const defaultHeart = new Path("M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z", {
-      top: isFlat ? 255 : 255,
+      top: isFlat ? 230 : 255,
       scaleX: isFlat ? 0.35 : 0.4,
       scaleY: isFlat ? 0.35 : 0.4,
       fill: "#ffffff",
@@ -217,7 +238,14 @@ export default function Home() {
       graphicType: "Heart",
     } as any);
 
-    const t4 = new IText(isFlat ? "Forever in our hearts" : "Memorials Handcrafted in Vista, CA", { top: isFlat ? 305 : 310, fontSize: isFlat ? 25 : 22, fill: "#ffffff", fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" });
+    const t4 = new IText(isFlat ? "Memorials Handcrafted in Vista, CA" : "Memorials Handcrafted in Vista, CA", { 
+      top: isFlat ? 310 : 310, 
+      fontSize: isFlat ? 20 : 22, 
+      fill: "#ffffff", 
+      fontFamily: "'Cormorant Garamond', serif", 
+      fontStyle: "italic",
+      textAlign: "center"
+    });
 
     canvas.add(t1, t2, t3, defaultHeart, t4);
     [t1, t2, t3, defaultHeart, t4].forEach(obj => canvas.centerObjectH(obj));
@@ -268,7 +296,7 @@ export default function Home() {
             type: "text"
           });
         } else if (obj instanceof Path) {
-          const gType = obj.graphicType || "Graphic";
+          const gType = (obj as any).graphicType || "Graphic";
           list.push({
             id: obj,
             name: `Graphic: ${gType}`,
@@ -394,7 +422,7 @@ export default function Home() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", backgroundColor: "#efece6", overflow: "hidden", fontFamily: "sans-serif" }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", backgroundColor: "#f9f8f6", overflow: "hidden", fontFamily: "sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet" />
       
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 30px", borderBottom: "1px solid #dfdad0", backgroundColor: "#f9f8f6", flexShrink: 0 }}>
@@ -562,7 +590,7 @@ export default function Home() {
         <aside style={{ width: "360px", minWidth: "360px", backgroundColor: "#f9f8f6", padding: "20px", borderLeft: "1px solid #dfdad0", borderBottom: "1px solid #dfdad0", display: "flex", flexDirection: "column", gap: "15px", flexShrink: 0, order: 3 }}>
           <div style={{ backgroundColor: "white", border: "1px solid #e5e0d8", borderRadius: "6px", padding: "15px" }}>
             <h4 style={{ ...uniformSelectFontStyle, fontWeight: "bold", margin: "0 0 4px 0" }}>The Stone</h4>
-            <span style={{ fontSize: "12px", color: "#888", ...uniformSelectFontStyle }}>Granite</span>
+            <span style={{ color: "#888", ...uniformSelectFontStyle }}>Granite</span>
             <div style={{ display: "flex", gap: "8px", margin: "10px 0" }}>
               {["#15161a", "#292b33", "#747885", "#56382d", "#aa8986", "#3d4757"].map((c) => (
                 <div key={c} onClick={() => setStoneColor(c)} style={{ width: "34px", height: "34px", borderRadius: "50%", backgroundColor: c, cursor: "pointer", border: stoneColor === c ? "3px solid #5a644e" : "1px solid #ddd" }}></div>
